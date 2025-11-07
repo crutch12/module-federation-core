@@ -120,3 +120,54 @@ export default function MFLinkPlugin(): ModuleFederationRuntimePlugin {
   };
 }
 ```
+
+## Problem: esm `remoteEntry.js` usage in var environment (without `@module-federation/runtime`)
+
+### Problem
+
+There are some cases when your `host` application is written with [ModuleFederationPlugin](https://webpack.js.org/plugins/module-federation-plugin/) and you are not able (or don't want) to rewrite it, but you want to use esm (e.g. `vite`) in your `remote` application.
+
+In this case you are not able to load `remote` esm application without `@module-federation/runtime`.
+
+#### Error Message
+:::danger Browser Error Message
+Uncaught SyntaxError: Cannot use import statement outside a module
+:::
+
+### Solution
+
+In you `remote` (`vite`) app create a new workaround file `public/varRemoteEntry.js`:
+
+```js
+// public/varRemoteEntry.js
+var remote; // name of remote app
+viteRemote = (function () {
+  function getScriptUrl() {
+    return document.currentScript.src
+  }
+
+  const entry = `${getScriptUrl()}/../remoteEntry.js` // path to esm remoteEntry.js
+
+  return {
+    get: (...args) => import(entry).then(m => m.get(...args)),
+    init: (...args) => import(entry).then(m => m.init(...args)),
+  };
+})();
+```
+
+Update `remotes` config in your `host` (`webpack`) app:
+
+```diff
+new ModuleFederationPlugin({
+  // ... webpack module federation config
+  remotes: {
+-    remote: 'remote@http://localhost:3001/remoteEntry.js',
++    remote: 'remote@http://localhost:3001/varRemoteEntry.js',
+  }
+})
+```
+
+Now you are able to import modules from `remote` (esm) in your `host` (var) application:
+```tsx
+const App = await import('remote/App')
+```
